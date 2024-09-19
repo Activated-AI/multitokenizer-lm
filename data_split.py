@@ -4,7 +4,9 @@ TRAIN_FRACTION = 0.9
 import datasets
 import os
 from tqdm import tqdm
-import random
+from enum import Enum
+import tokenizers
+from typing import Iterator
 
 special_tokens = ['[BEGIN_EN]', '[BEGIN_ES]', '[PROMPT_EN_STORY]', '[PROMPT_ES_STORY]', '[PROMPT_EN_ES_TRANS]', '[END]']
 
@@ -28,8 +30,7 @@ def write_translation_story_tinyprompt_strs(spanish_text, english_text):
     spanish_paragraphs = paragraph_splitter(spanish_text)
     translation_paragraphs = paragraph_splitter(english_text)
 
-    if len(spanish_paragraphs) != len(translation_paragraphs):
-        # Optionally, log or handle mismatched paragraph counts
+    if len(spanish_paragraphs) != len(translation_paragraphs):        
         return ''
     
     alternating_paragraphs = ''.join(
@@ -58,27 +59,47 @@ class FunctionApplyingIterable:
 
     def __iter__(self):
         return function_applying_iterator(self.items, self.func)
+
+
+Task = Enum('Task', 'english spanish translation')
+        
+
+class DatasetWithFormatters:
+    def __init__(self):
+        self.tinystories_ds_es_translated = datasets.load_dataset("robrenaud/multilingual_tinystories", data_files=["stories_00.json"])
+        self.tinystories_ds_en = datasets.load_dataset("roneneldan/TinyStories")
+        self.raw_es_stories = [f'stories_{i:02d}.json' for i in range(1, 22)]
+        self.tinystories_ds_es = datasets.load_dataset("robrenaud/multilingual_tinystories", data_files=raw_es_stories)
+
+        # Display Dataset Sizes
+        print('num translations   ', len(self.tinystories_ds_es_translated['train']))
+        print('num spanish stories', len(self.tinystories_ds_es['train']))
+        print('num english stories', len(self.tinystories_ds_en['train']))
+
+        # Prepare Datasets with Formatters
+        self.datasets_with_formatters = {
+            Task.english: (self.tinystories_ds_en['train'].to_list(), write_english_story_tinyprompt),
+            Task.spanish: (self.tinystories_ds_es['train'].to_list(), write_spanish_story_tinyprompt),
+            Task.translation: (self.tinystories_ds_es_translated['train'].to_list(), write_translation_story_tinyprompt)            
+        }
+        self.iterable_datasets = {
+            "english" : FunctionApplyingIterable(self.tinystories_ds_en['train'].tolist(), write_english_story_tinyprompt),
+            "spanish" : FunctionApplyingIterable(self.tinystories_ds_es['train'], write_spanish_story_tinyprompt),
+            "translation" : FunctionApplyingIterable(self.tinystories_ds_es_translated['train'], write_translation_story_tinyprompt)
+        }    
     
-if __name__ == '__main__':
-    # Load Datasets
-    tinystories_ds_es_translated = datasets.load_dataset("robrenaud/multilingual_tinystories", data_files=["stories_00.json"])
-    tinystories_ds_en = datasets.load_dataset("roneneldan/TinyStories")
-    raw_es_stories = [f'stories_{i:02d}.json' for i in range(1, 22)]
-    tinystories_ds_es = datasets.load_dataset("robrenaud/multilingual_tinystories", data_files=raw_es_stories)
+    def get_task_iterator(self, task: Task, is_train: bool) -> Iterator[str]:
+        if is_train:
+            split = 
 
-    # Display Dataset Sizes
-    print('num translations   ', len(tinystories_ds_es_translated['train']))
-    print('num spanish stories', len(tinystories_ds_es['train']))
-    print('num english stories', len(tinystories_ds_en['train']))
+@dataclass
+class TinyStoriesDataset:
+    name: str
+    items: List[str]
+    text: str
+    tokenized: Dict[str, Any]
 
-    # Prepare Datasets with Formatters
-    datasets_with_formatters = [
-       ('english', tinystories_ds_en['train'].to_list(), write_english_story_tinyprompt),
-       ('spanish', tinystories_ds_es['train'].to_list(), write_spanish_story_tinyprompt),
-       ('translation', tinystories_ds_es_translated['train'].to_list(), write_translation_story_tinyprompt)
-    ]
-
-    # Create Experiment Directory
+def write_train_test_splits_by_task(datasets_with_formatters):    
     os.makedirs(EXPT_NAME, exist_ok=True)
 
     # Write Training Data to Separate Files
@@ -99,3 +120,32 @@ if __name__ == '__main__':
                 formatted_story = formatter(story)
                 if formatted_story:  # Ensure that empty strings are not written
                     f.write(formatted_story + '\n')
+
+    
+def create_tokenizers():
+    os.makedirs(f'{EXPT_NAME}/shared/tokenizer', exist_ok=True)
+    os.makedirs(f'{EXPT_NAME}/multi/tokenizer', exist_ok=True)
+    
+    for lang in ['english', 'spanish']:
+        train_filename = f'{EXPT_NAME}/train_{lang}.txt'
+        tokenizer = tokenizers.ByteLevelBPETokenizer()
+        tokenizer.train(files=[train_filename], vocab_size=8192, min_frequency=2, special_tokens=special_tokens)        
+        tokenizer.save(f'{EXPT_NAME}/multi/tokenizer/{lang}')
+    
+    filenames = [f'{EXPT_NAME}/train_english.txt', f'{EXPT_NAME}/train_spanish.txt']
+    for size in ['small', 'large']:
+        shared_tokenizer = tokenizers.ByteLevelBPETokenizer()
+        shared_tokenizer.train(files=filenames, vocab_size=8192 * 2 if size == 'large' else 1, 
+                               min_frequency=2, special_tokens=special_tokens)        
+        shared_tokenizer.save(f'{EXPT_NAME}/shared/{size}_tokenizer')
+
+def main():
+    datasets = DatasetsWithFormatters()
+
+    write_train_test_splits_by_task(datasets)    
+    # create_tokenizers()
+
+    tokenize_datasets_to_disk(datasets)
+    
+if __name__ == '__main__':
+    main()
