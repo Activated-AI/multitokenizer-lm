@@ -1,10 +1,10 @@
-# %%
 import re
 import torch
 from global_constants import special_tokens
-lang_splitter_re = re.compile(r'(\[BEGIN_EN\]|\[BEGIN_ES\])')
 import tokenizers
 
+
+lang_splitter_re = re.compile(r'(\[BEGIN_EN\]|\[BEGIN_ES\])')
 
 class MultiTokenizer:
     def __init__(self, tokenizers):
@@ -38,13 +38,11 @@ test_input = (
 [BEGIN_EN] Slightly more text [END]""")
 
 
-
-# %%
 english_tokenizer  = tokenizers.ByteLevelBPETokenizer("expt_1/multitok_model_1/tiny-stories-Language.ENGLISH-bpe-vocab.json", "expt_1/multitok_model_1/tiny-stories-Language.ENGLISH-bpe-merges.txt")
 spanish_tokenizer = tokenizers.ByteLevelBPETokenizer("expt_1/multitok_model_1/tiny-stories-Language.SPANISH-bpe-vocab.json", "expt_1/multitok_model_1/tiny-stories-Language.SPANISH-bpe-merges.txt")
-# %%
+
 tokeys = [english_tokenizer, spanish_tokenizer]
 
 print(MultiTokenizer(tokeys).encode(test_input))
 
-# %%
+
