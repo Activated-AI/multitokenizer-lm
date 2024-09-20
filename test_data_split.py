@@ -74,8 +74,7 @@ class TestContextWindowAtomizer(unittest.TestCase):
             [1, 1, 444],
             [1, 555, 666]
         ], dtype=torch.short)
-        
-        torch.testing.assert_close(tensor, expected_tensor)
+        assert_tensor_equal(tensor, expected_tensor)
 
 
 
