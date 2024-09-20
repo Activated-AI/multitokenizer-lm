@@ -57,7 +57,7 @@ class MultiTokenizer:
         return FakeTokens(self.encode(args))
     
     def encode_batch(self, texts):
-        chunk_size = 100000
+        chunk_size = 25000
         for i in range(0, len(texts), chunk_size):
             with multiprocessing.Pool(24) as pool:
                 yield from pool.map(self._wrapped_encode, texts[i:i+chunk_size])
