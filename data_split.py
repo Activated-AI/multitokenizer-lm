@@ -140,26 +140,31 @@ class ContextWindowAtomizer:
         assert token_id_is_lang_id(lang_tok), "lang_tok must be a langid"
 
         if self.retain_switch_tokens:
-            sequence = [lang_tok] + sequence 
+            sequence = [lang_tok] + sequence
 
-        # the multitokenizer still needs to generate the switch tok, for fairness.
         if self._current_context is None:
             self._current_context = [lang_tok]
 
-        assert len(sequence) < self.context_size * 1000 , "code handles very large tokenized items poorly"
-        while len(sequence) > 0:
-            if len(self._current_context) + len(sequence) < self.context_size:
-                self._current_context.extend(sequence)
-                sequence = []
-            else:
-                num_to_write = self.context_size - len(self._current_context)
-                self._current_context.extend(sequence[:num_to_write])
-                self._built_contexts.append(self._current_context)
-                sequence = sequence[num_to_write:]
-                if len(sequence) > 0:
-                    self._current_context = [lang_tok]
-                else:
+        seq_start_idx = 0
+        seq_len = len(sequence)
+
+        while seq_start_idx < seq_len:
+            remaining_context_space = self.context_size - len(self._current_context)
+            remaining_sequence_tokens = seq_len - seq_start_idx
+
+            if remaining_sequence_tokens <= remaining_context_space:
+                # All remaining tokens can fit into current context
+                self._current_context.extend(sequence[seq_start_idx:])
+                seq_start_idx = seq_len
+                if len(self._current_context) == self.context_size:
+                    self._built_contexts.append(self._current_context)
                     self._current_context = None
+            else:
+                # Fill the remaining context space
+                self._current_context.extend(sequence[seq_start_idx:seq_start_idx + remaining_context_space])
+                self._built_contexts.append(self._current_context)
+                seq_start_idx += remaining_context_space
+                self._current_context = [lang_tok] if seq_start_idx < seq_len else None
                     
     def tensorize(self):
         return torch.tensor(self._built_contexts, dtype=torch.short)
