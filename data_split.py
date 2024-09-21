@@ -1,4 +1,4 @@
-EXPT_NAME = 'expt_1'
+EXPT_NAME = 'expt_2_context_window_fix'
 TRAIN_FRACTION = 0.9
 
 import datasets
@@ -131,7 +131,7 @@ def token_id_is_lang_id(token_id):
 
 class ContextWindowAtomizer:
     def __init__(self, context_size, retain_switch_tokens=False):
-        self.context_size = context_size
+        self.context_size = context_size+1  # +1 for the start token (which dictates the language)
         self._built_contexts = []
         self._current_context = None
         self.retain_switch_tokens = retain_switch_tokens
@@ -167,7 +167,7 @@ class ContextWindowAtomizer:
                 self._current_context = [lang_tok] if seq_start_idx < seq_len else None
                     
     def tensorize(self):
-        return torch.tensor(self._built_contexts, dtype=torch.short)
+        return torch.tensor(self._built_contexts, dtype=torch.short, device='cuda:0')
 
 def write_tokenized_file(datasets, tokenizer, output_file, retain_switch_tokens=False):
     atomizer = ContextWindowAtomizer(512, retain_switch_tokens=retain_switch_tokens)
@@ -203,15 +203,15 @@ def main():
 
     # save_tokenizer(shared_tokenizer_small, f'{EXPT_NAME}/shared/8k/tokenizer.json')
     # save_tokenizer(shared_tokenizer_large, f'{EXPT_NAME}/shared/16k/tokenizer.json')
-    # save_tokenizer(english_tokenizer, f'{EXPT_NAME}/multi_8k/english_tokenizer.json')
+    # save_tokenizer(english_tokenizer, f'{EXiPT_NAME}/multi_8k/english_tokenizer.json')
     # save_tokenizer(spanish_tokenizer, f'{EXPT_NAME}/multi_8k/spanish_tokenizer.json')
 
     shared_tokenizer_small = tokenizers.Tokenizer.from_file(f'{EXPT_NAME}/shared/8k/tokenizer.json')
     shared_tokenizer_large = tokenizers.Tokenizer.from_file(f'{EXPT_NAME}/shared/16k/tokenizer.json')
     english_tokenizer = tokenizers.Tokenizer.from_file(f'{EXPT_NAME}/multi_8k/english_tokenizer.json')
     spanish_tokenizer = tokenizers.Tokenizer.from_file(f'{EXPT_NAME}/multi_8k/spanish_tokenizer.json')    
-    #write_tokenized_dataset(datasets, shared_tokenizer_large, f'{EXPT_NAME}/shared/16k', retain_switch_tokens=False)
-    #write_tokenized_dataset(datasets, shared_tokenizer_small, f'{EXPT_NAME}/shared/8k', retain_switch_tokens=False)
+    # write_tokenized_dataset(datasets, shared_tokenizer_large, f'{EXPT_NAME}/shared/16k', retain_switch_tokens=False)
+    # write_tokenized_dataset(datasets, shared_tokenizer_small, f'{EXPT_NAME}/shared/8k', retain_switch_tokens=False)
 
     multi_tokenizer = MultiTokenizer([english_tokenizer, spanish_tokenizer])
     write_tokenized_dataset(datasets, multi_tokenizer, f'{EXPT_NAME}/multi_8k', retain_switch_tokens=True)

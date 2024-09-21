@@ -5,7 +5,7 @@ import tokenizers
 from itertools import groupby
 from dataclasses import dataclass
 from typing import List
-
+import torch
 
 
 
@@ -16,10 +16,10 @@ def partition_list_by_lang(lst):
     partitioned_sequence = [list(group) for _, group in groupby(lst, token_id_is_lang_id)]
     assert len(partitioned_sequence) % 2 == 0, "partitioned sequence must have an even number of elements"
     for singleton_lang_list, monolingual_tokens in  zip(partitioned_sequence[::2], partitioned_sequence[1::2]):
-        assert len(singleton_lang_list) == 1, "singleton lang list must have exactly one element"
+        #assert len(singleton_lang_list) == 1, "singleton lang list must have exactly one element"
         assert token_id_is_lang_id(singleton_lang_list[0]), "singleton lang list must have a langid"
         assert not any(token_id_is_lang_id(t) for t in monolingual_tokens), "monolingual tokens must not be langids"
-        yield singleton_lang_list[0], monolingual_tokens
+        yield singleton_lang_list[-1], monolingual_tokens
 
 def token_id_is_lang_id(token_id):
     return token_id < num_langs
@@ -63,10 +63,23 @@ class MultiTokenizer:
                 yield from pool.map(self._wrapped_encode, texts[i:i+chunk_size])
         
                 
-    def decode(self, tokens, langs=None):
+    def decode(self, tokens, langs=None, skip_special_tokens=True):
         ret = ""
         for lang, token_list in partition_list_by_lang(tokens):
             tokenizer = self.tokenizers[lang]
-            ret += tokenizer.decode([lang]+token_list, skip_special_tokens=False)
+            ret += tokenizer.decode([lang]+token_list, skip_special_tokens=skip_special_tokens)
         return ret
 
+
+def add_lang_idxs(tokens, num_langs, block_size):
+    assert (len(tokens.shape) != 0), "Must have sequence of tokens"
+    assert tokens.view([-1, block_size])[:, 0].max() < num_langs, "First token in each block must be a language index"
+    original_shape = tokens.shape
+    tokens = tokens.view(-1)
+    indices = torch.where(tokens < num_langs)[0]
+    langs = tokens[indices]
+    indices_with_last = torch.cat((indices, torch.tensor([len(tokens)])))
+    distances = indices_with_last[1:] - indices_with_last[:-1]
+    langs = langs.repeat_interleave(distances)
+    langs = langs.view(original_shape)
+    return langs
